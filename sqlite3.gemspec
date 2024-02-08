@@ -66,7 +66,11 @@ Gem::Specification.new do |s|
     "lib/sqlite3/resultset.rb",
     "lib/sqlite3/statement.rb",
     "lib/sqlite3/value.rb",
-    "lib/sqlite3/version.rb"
+    "lib/sqlite3/version.rb",
+    "ext/sqlite3/sqlite-amalgamation/sqlite3.h",
+    "ext/sqlite3/sqlite-amalgamation/sqlite3.c",
+    "ext/sqlite3/sqlite-amalgamation/sqlite3ext.h",
+    "ext/sqlite3/sqlite-amalgamation/shell.c"
   ]
 
   s.extra_rdoc_files = [

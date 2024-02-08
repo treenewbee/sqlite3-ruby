@@ -72,6 +72,111 @@ sqlite3_database_unwrap(VALUE database)
     return ctx;
 }
 
+#ifdef ENABLE_SESSION
+
+static VALUE
+rb_sqlite3_session_create(VALUE self)
+{
+    sqlite3RubyPtr ctx;
+    int status;
+    TypedData_Get_Struct(self, sqlite3Ruby, &database_type, ctx);
+
+    if (ctx->session != NULL)
+        return self;
+
+    status = sqlite3session_create(ctx->db, "main", &(ctx->session));
+    CHECK(ctx->db, status);
+
+    return self;
+}
+
+static VALUE
+rb_sqlite3_session_attach(VALUE self, VALUE table_name)
+{
+    sqlite3RubyPtr ctx;
+    int status;
+    TypedData_Get_Struct(self, sqlite3Ruby, &database_type, ctx);
+
+    if (ctx->session == NULL)
+    {
+        status = sqlite3session_create(ctx->db, "main", &(ctx->session));
+        CHECK(ctx->db, status);
+    }
+
+    status = sqlite3session_attach(ctx->session, StringValuePtr(table_name));
+    CHECK(ctx->db, status);
+
+    return self;
+}
+
+static VALUE
+rb_sqlite3_session_changeset(VALUE self)
+{
+    sqlite3RubyPtr ctx;
+    int status;
+    TypedData_Get_Struct(self, sqlite3Ruby, &database_type, ctx);
+
+    int length;
+    void *data;
+    VALUE res = Qnil;
+
+    if (ctx->session != NULL)
+    {
+        status = sqlite3session_changeset(ctx->session, &length, &data);
+        CHECK(ctx->db, status);
+
+        res = rb_str_new(data, length);
+        //! Following a successful call to this function, it is the responsibility of the caller to eventually free the buffer that *ppChangeset points to using sqlite3_free().
+        sqlite3_free(data);
+    }
+
+    return res;
+}
+
+int conflict_callback(
+    void *pCtx,                   /* Copy of sixth arg to _apply() */
+    int eConflict,                /* DATA, MISSING, CONFLICT, CONSTRAINT */
+    sqlite3_changeset_iter *p     /* Handle describing change and conflict */
+){
+    return SQLITE_CHANGESET_OMIT;
+}
+
+static VALUE
+rb_sqlite3_changeset_apply(VALUE self, VALUE str_data)
+{
+    sqlite3RubyPtr ctx;
+    int status;
+    TypedData_Get_Struct(self, sqlite3Ruby, &database_type, ctx);
+
+    int length = RSTRING_LEN(str_data);
+    void *data = StringValuePtr(str_data);
+    void *pCtx;
+
+    status = sqlite3changeset_apply(ctx->db, length, data, NULL, conflict_callback, pCtx);
+    CHECK(ctx->db, status);
+
+    return self;
+}
+
+static VALUE
+rb_sqlite3_session_delete(VALUE self)
+{
+    sqlite3RubyPtr ctx;
+    int status;
+    TypedData_Get_Struct(self, sqlite3Ruby, &database_type, ctx);
+
+    if (ctx->session == NULL)
+    {
+        return self;
+    }
+
+    sqlite3session_delete(ctx->session);
+    ctx->session = NULL;
+    return self;
+}
+
+#endif
+
 static VALUE
 rb_sqlite3_open_v2(VALUE self, VALUE file, VALUE mode, VALUE zvfs)
 {
@@ -886,6 +991,16 @@ init_sqlite3_database(void)
 
     rb_define_alloc_func(cSqlite3Database, allocate);
     rb_define_private_method(cSqlite3Database, "open_v2", rb_sqlite3_open_v2, 3);
+
+#ifdef ENABLE_SESSION
+    // session
+    rb_define_method(cSqlite3Database, "session_create", rb_sqlite3_session_create, 0);
+    rb_define_method(cSqlite3Database, "session_attach", rb_sqlite3_session_attach, 1);
+    rb_define_method(cSqlite3Database, "session_changeset", rb_sqlite3_session_changeset, 0);
+    rb_define_method(cSqlite3Database, "changeset_apply", rb_sqlite3_changeset_apply, 1);
+    rb_define_method(cSqlite3Database, "session_delete", rb_sqlite3_session_delete, 0);
+#endif
+
     rb_define_private_method(cSqlite3Database, "open16", rb_sqlite3_open16, 1);
     rb_define_method(cSqlite3Database, "collation", collation, 2);
     rb_define_method(cSqlite3Database, "close", sqlite3_rb_close, 0);

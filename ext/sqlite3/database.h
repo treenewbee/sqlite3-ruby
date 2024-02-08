@@ -8,6 +8,9 @@ struct _sqlite3Ruby {
     VALUE busy_handler;
     int stmt_timeout;
     struct timespec stmt_deadline;
+#ifdef ENABLE_SESSION
+    sqlite3_session *session;
+#endif
 };
 
 typedef struct _sqlite3Ruby sqlite3Ruby;

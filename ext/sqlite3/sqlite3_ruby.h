@@ -22,6 +22,8 @@
 
 #ifdef USING_SQLCIPHER_INC_SUBDIR
 #  include <sqlcipher/sqlite3.h>
+#elif defined(USE_AMALGAMATION)
+#  include<sqlite-amalgamation/sqlite3.h>
 #else
 #  include <sqlite3.h>
 #endif

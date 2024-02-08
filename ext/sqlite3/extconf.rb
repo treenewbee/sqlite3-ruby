@@ -6,10 +6,21 @@ module Sqlite3
     ENV_ALLOWLIST = ["CC", "CFLAGS", "LDFLAGS", "LIBS", "CPPFLAGS", "LT_SYS_LIBRARY_PATH", "CPP"]
 
     class << self
+
+      def add_define(name)
+        $defs.push("-D#{name}")
+      end
+
       def configure
         configure_cross_compiler
 
-        if system_libraries?
+        add_define("USE_AMALGAMATION") if amalgamation? || enable_session?
+        add_define("ENABLE_SESSION") if enable_session?
+
+        if amalgamation?
+          message "Building sqlite3-ruby using #{libname} amalgamation.\n"
+          configure_amalgamation
+        elsif system_libraries?
           message "Building sqlite3-ruby using system #{libname}.\n"
           configure_system_libraries
         else
@@ -27,6 +38,10 @@ module Sqlite3
         ENV["CC"] = RbConfig::CONFIG["CC"]
       end
 
+      def amalgamation?
+        with_config("amalgamation") || enable_session?
+      end
+
       def system_libraries?
         sqlcipher? || enable_config("system-libraries")
       end
@@ -42,9 +57,20 @@ module Sqlite3
           with_config("sqlcipher-lib")
       end
 
+      def enable_session?
+        with_config("enable-session")
+      end
+
       def configure_system_libraries
         pkg_config(libname)
         append_cppflags("-DUSING_SQLCIPHER") if sqlcipher?
+      end
+
+      def configure_amalgamation
+        pkg_config("sqlite3")
+        # for session extension
+        append_cppflags("-DSQLITE_ENABLE_SESSION") if enable_session?
+        append_cppflags("-DSQLITE_ENABLE_PREUPDATE_HOOK") if enable_session?
       end
 
       def configure_packaged_libraries
