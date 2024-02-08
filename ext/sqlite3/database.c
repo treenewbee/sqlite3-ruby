@@ -175,6 +175,112 @@ rb_sqlite3_session_delete(VALUE self)
     return self;
 }
 
+static VALUE
+rb_sqlite3_changeset_parse(VALUE self, VALUE str_data)
+{
+    sqlite3RubyPtr ctx;
+    int status;
+    TypedData_Get_Struct(self, sqlite3Ruby, &database_type, ctx);
+
+    int nChangeset = RSTRING_LEN(str_data);
+    void *pChangeset = StringValuePtr(str_data);
+    void *pCtx;
+
+    int rc;
+    int rc2;
+    sqlite3_changeset_iter *pIter = 0;
+
+    /* Create an iterator to iterate through the changeset */
+    rc = sqlite3changeset_start(&pIter, nChangeset, pChangeset);
+    if( rc!=SQLITE_OK ) 
+    {
+        return FIXNUM(rc);
+    }
+
+    VALUE res = rb_hash_new();
+
+    /* This loop runs once for each change in the changeset */
+    while( SQLITE_ROW==sqlite3changeset_next(pIter) ){
+        const char *zTab;           /* Table change applies to */
+        int nCol;                   /* Number of columns in table zTab */
+        int op;                     /* SQLITE_INSERT, UPDATE or DELETE */
+        sqlite3_value *pVal;
+
+        /* Print the type of operation and the table it is on */
+        rc = sqlite3changeset_op(pIter, &zTab, &nCol, &op, 0);
+        if( rc!=SQLITE_OK ) goto exit_print_changeset;
+
+        VALUE op_name;
+        if (op==SQLITE_INSERT)
+            op_name = rb_str_new_cstr("insert");
+        else if (op==SQLITE_UPDATE)
+            op_name = rb_str_new_cstr("update");
+        else if (op==SQLITE_DELETE)
+            op_name = rb_str_new_cstr("delete");
+        else
+            continue;
+
+        printf("%s\t%s\t", op==SQLITE_INSERT?"INSERT" : op==SQLITE_UPDATE?"UPDATE" : "DELETE", zTab);
+
+        VALUE table_name = rb_str_new_cstr(zTab);
+        VALUE table_hash = rb_hash_aref(res, table_name);
+        if (table_hash == Qnil)
+        {
+            table_hash = rb_hash_new();
+
+            rb_hash_aset(table_hash, rb_str_new_cstr("update"), rb_ary_new());
+            rb_hash_aset(table_hash, rb_str_new_cstr("insert"), rb_ary_new());
+            rb_hash_aset(table_hash, rb_str_new_cstr("delete"), rb_ary_new());
+
+            rb_hash_aset(res, table_name, table_hash);
+        }
+
+        /* If this is an UPDATE or DELETE, print the old.* values */
+        if( op==SQLITE_UPDATE || op==SQLITE_DELETE ){
+            for(int i=0; i<nCol; i++){
+                rc = sqlite3changeset_old(pIter, i, &pVal);
+                if( rc!=SQLITE_OK ) goto exit_print_changeset;
+                if ( i == 0)
+                {
+                    printf("%s\n", pVal ? sqlite3_value_text(pVal) : "=");
+                    VALUE op_array;
+                    if (op == SQLITE_UPDATE)
+                        op_array = rb_hash_aref(table_hash, rb_str_new_cstr("update"));
+                    else if (op == SQLITE_DELETE)
+                        op_array = rb_hash_aref(table_hash, rb_str_new_cstr("update"));
+                    else if (op == SQLITE_INSERT)
+                        op_array = rb_hash_aref(table_hash, rb_str_new_cstr("update"));
+                    if (pVal && op_array != Qnil)
+                    {
+                        rb_ary_push(op_array, rb_str_new_cstr(sqlite3_value_text(pVal)));
+                    }
+                }
+                else
+                    printf("%s\t", pVal ? sqlite3_value_text(pVal) : "=");
+            }   
+            printf("\n");
+        }
+
+        /* If this is an UPDATE or INSERT, print the new.* values */
+        if( op==SQLITE_UPDATE || op==SQLITE_INSERT ){
+            for(int i=0; i<nCol; i++){
+                rc = sqlite3changeset_new(pIter, i, &pVal);
+                if( rc!=SQLITE_OK ) goto exit_print_changeset;
+                if (i > 0)
+                    printf("%s\t", pVal ? sqlite3_value_text(pVal) : "=");
+            }
+            printf("\n");
+        }
+    }
+
+    /* Clean up the changeset and return an error code (or SQLITE_OK) */
+    exit_print_changeset:
+    rc2 = sqlite3changeset_finalize(pIter);
+    if( rc==SQLITE_OK ) rc = rc2;
+
+    return res;
+}
+
 #endif
 
 static VALUE
@@ -999,6 +1105,7 @@ init_sqlite3_database(void)
     rb_define_method(cSqlite3Database, "session_changeset", rb_sqlite3_session_changeset, 0);
     rb_define_method(cSqlite3Database, "changeset_apply", rb_sqlite3_changeset_apply, 1);
     rb_define_method(cSqlite3Database, "session_delete", rb_sqlite3_session_delete, 0);
+    rb_define_method(cSqlite3Database, "changeset_parse", rb_sqlite3_changeset_parse, 1);
 #endif
 
     rb_define_private_method(cSqlite3Database, "open16", rb_sqlite3_open16, 1);
