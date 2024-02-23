@@ -281,6 +281,35 @@ rb_sqlite3_changeset_parse(VALUE self, VALUE str_data)
     return res;
 }
 
+static VALUE
+rb_sqlite3_changeset_concat(VALUE self, VALUE str_data_a, VALUE str_data_b)
+{
+    sqlite3RubyPtr ctx;
+    int status;
+    TypedData_Get_Struct(self, sqlite3Ruby, &database_type, ctx);
+
+    int nChangesetA = RSTRING_LEN(str_data_a);
+    void *pChangesetA = StringValuePtr(str_data_a);
+    int nChangesetB = RSTRING_LEN(str_data_b);
+    void *pChangesetB = StringValuePtr(str_data_b);
+
+    int length;
+    void *data;
+    VALUE res = Qnil;
+
+    int rc = sqlite3changeset_concat(nChangesetA, pChangesetA, nChangesetB, pChangesetB, &length, &data);
+
+    if( rc!=SQLITE_OK ) 
+    {
+        return FIXNUM(rc);
+    }
+    res = rb_str_new(data, length);
+
+    sqlite3_free(data);
+
+    return res;
+}
+
 #endif
 
 static VALUE
@@ -1105,7 +1134,9 @@ init_sqlite3_database(void)
     rb_define_method(cSqlite3Database, "session_changeset", rb_sqlite3_session_changeset, 0);
     rb_define_method(cSqlite3Database, "changeset_apply", rb_sqlite3_changeset_apply, 1);
     rb_define_method(cSqlite3Database, "session_delete", rb_sqlite3_session_delete, 0);
-    rb_define_method(cSqlite3Database, "changeset_parse", rb_sqlite3_changeset_parse, 1);
+    // rb_define_method(cSqlite3Database, "changeset_parse", rb_sqlite3_changeset_parse, 1);
+    rb_define_singleton_method (cSqlite3Database, "changeset_parse", rb_sqlite3_changeset_parse, 1);
+    rb_define_singleton_method (cSqlite3Database, "changeset_concat", rb_sqlite3_changeset_concat, 2);
 #endif
 
     rb_define_private_method(cSqlite3Database, "open16", rb_sqlite3_open16, 1);
