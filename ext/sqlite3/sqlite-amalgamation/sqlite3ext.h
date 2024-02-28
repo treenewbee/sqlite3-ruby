@@ -17,7 +17,12 @@
 */
 #ifndef SQLITE3EXT_H
 #define SQLITE3EXT_H
-#include "sqlite3.h"
+
+#ifdef USE_AMALGAMATION
+# include <sqlite-amalgamation/sqlite3.h>
+#else
+# include "sqlite3.h"
+#endif
 
 /*
 ** The following structure holds pointers to all of the SQLite API
