@@ -220,7 +220,7 @@ rb_sqlite3_changeset_parse(VALUE self, VALUE str_data)
         else
             continue;
 
-        printf("%s\t%s\t", op==SQLITE_INSERT?"INSERT" : op==SQLITE_UPDATE?"UPDATE" : "DELETE", zTab);
+        // printf("%s\t%s\t", op==SQLITE_INSERT?"INSERT" : op==SQLITE_UPDATE?"UPDATE" : "DELETE", zTab);
 
         VALUE table_name = rb_str_new_cstr(zTab);
         VALUE table_hash = rb_hash_aref(res, table_name);
@@ -235,6 +235,14 @@ rb_sqlite3_changeset_parse(VALUE self, VALUE str_data)
             rb_hash_aset(res, table_name, table_hash);
         }
 
+        VALUE op_array;
+        if (op == SQLITE_UPDATE)
+            op_array = rb_hash_aref(table_hash, rb_str_new_cstr("update"));
+        else if (op == SQLITE_DELETE)
+            op_array = rb_hash_aref(table_hash, rb_str_new_cstr("delete"));
+        else if (op == SQLITE_INSERT)
+            op_array = rb_hash_aref(table_hash, rb_str_new_cstr("insert"));
+
         /* If this is an UPDATE or DELETE, print the old.* values */
         if( op==SQLITE_UPDATE || op==SQLITE_DELETE ){
             for(int i=0; i<nCol; i++){
@@ -242,23 +250,16 @@ rb_sqlite3_changeset_parse(VALUE self, VALUE str_data)
                 if( rc!=SQLITE_OK ) goto exit_print_changeset;
                 if ( i == 0)
                 {
-                    printf("%s\n", pVal ? sqlite3_value_text(pVal) : "=");
-                    VALUE op_array;
-                    if (op == SQLITE_UPDATE)
-                        op_array = rb_hash_aref(table_hash, rb_str_new_cstr("update"));
-                    else if (op == SQLITE_DELETE)
-                        op_array = rb_hash_aref(table_hash, rb_str_new_cstr("update"));
-                    else if (op == SQLITE_INSERT)
-                        op_array = rb_hash_aref(table_hash, rb_str_new_cstr("update"));
                     if (pVal && op_array != Qnil)
                     {
                         rb_ary_push(op_array, rb_str_new_cstr(sqlite3_value_text(pVal)));
                     }
+                    // printf("%s\n", pVal ? sqlite3_value_text(pVal) : "=");
                 }
-                else
-                    printf("%s\t", pVal ? sqlite3_value_text(pVal) : "=");
+                // else
+                    // printf("%s\t", pVal ? sqlite3_value_text(pVal) : "=");
             }   
-            printf("\n");
+            // printf("\n");
         }
 
         /* If this is an UPDATE or INSERT, print the new.* values */
@@ -266,10 +267,18 @@ rb_sqlite3_changeset_parse(VALUE self, VALUE str_data)
             for(int i=0; i<nCol; i++){
                 rc = sqlite3changeset_new(pIter, i, &pVal);
                 if( rc!=SQLITE_OK ) goto exit_print_changeset;
-                if (i > 0)
-                    printf("%s\t", pVal ? sqlite3_value_text(pVal) : "=");
+                if (i == 0)
+                {
+                    if (pVal && op_array != Qnil)
+                    {
+                        rb_ary_push(op_array, rb_str_new_cstr(sqlite3_value_text(pVal)));
+                    }
+                    // printf("%s\n", pVal ? sqlite3_value_text(pVal) : "=");
+                }
+                // else
+                    // printf("%s\t", pVal ? sqlite3_value_text(pVal) : "=");
             }
-            printf("\n");
+            // printf("\n");
         }
     }
 
@@ -295,7 +304,7 @@ rb_sqlite3_changeset_concat(VALUE self, VALUE str_data_a, VALUE str_data_b)
     int nChangesetB = RSTRING_LEN(str_data_b);
     void *pChangesetB = StringValuePtr(str_data_b);
 
-    if nChangesetA == 0 || nChangesetB == 0
+    if (nChangesetA == 0 || nChangesetB == 0)
         return res;
 
     int length;
